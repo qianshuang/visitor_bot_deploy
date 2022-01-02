@@ -9,7 +9,7 @@ def peak_wrong_word(query, intent):
     query_words = query.split(" ")
     intent_words = intent.split(" ")
     for i in range(len(query_words) - 1):
-        if query_words[i] != intent_words[i]:
+        if query_words[i] != intent_words[i] and Levenshtein.ratio(query_words[i], intent_words[i]) >= 0.8:
             corrections[query_words[i]] = intent_words[i]
 
 

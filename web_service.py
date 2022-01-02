@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import shutil
+
 from flask import Flask, jsonify
 from flask import request
 from gevent import pywsgi
@@ -87,25 +89,41 @@ def refresh():
     更新intents.txt、priority.txt后，需要手动刷新才生效
     {
         "bot_name": "xxxxxx",  # 要操作的bot name
+        "operate": "upsert",  # 操作。upsert：更新或新增；delete：删除
     }
     """
     resq_data = json.loads(request.get_data())
     bot_n = resq_data["bot_name"].strip()
+    operate = resq_data["operate"].strip()
 
-    # 刷新intents文件
-    INTENT_FILE_ = os.path.join(BOT_SRC_DIR, bot_n, "intents.txt")
-    intents_lower_dict_ = {pre_process(intent): intent for intent in read_file(INTENT_FILE_)}
-    trie_ = marisa_trie.Trie(list(intents_lower_dict_.keys()))
+    if operate == "upsert":
+        # 刷新intents文件
+        INTENT_FILE_ = os.path.join(BOT_SRC_DIR, bot_n, "intents.txt")
+        intents_lower_dict_ = {pre_process(intent): intent for intent in read_file(INTENT_FILE_)}
+        trie_ = marisa_trie.Trie(list(intents_lower_dict_.keys()))
 
-    bot_intents_lower_dict[bot_n] = intents_lower_dict_
-    bot_trie[bot_n] = trie_
-    print(bot_n, "intents trie finished rebuilding...")
+        bot_intents_lower_dict[bot_n] = intents_lower_dict_
+        bot_trie[bot_n] = trie_
+        print(bot_n, "intents trie finished rebuilding...")
 
-    # 刷新priority文件
-    PRIORITY_FILE_ = os.path.join(BOT_SRC_DIR, bot_n, "priority.txt")
-    bot_priorities[bot_n] = read_file(PRIORITY_FILE_)
-    print(bot_n, "priority file finished reloading...")
-
+        # 刷新priority文件
+        PRIORITY_FILE_ = os.path.join(BOT_SRC_DIR, bot_n, "priority.txt")
+        bot_priorities[bot_n] = read_file(PRIORITY_FILE_)
+        print(bot_n, "priority file finished reloading...")
+    elif operate == "delete":
+        # 删除bot
+        try:
+            shutil.rmtree(os.path.join(BOT_SRC_DIR, bot_n))
+            del bot_intents_lower_dict[bot_n]
+            del bot_trie[bot_n]
+            del bot_recents[bot_n]
+            del bot_frequency[bot_n]
+            del bot_priorities[bot_n]
+        except:
+            print(bot_n, "deleted already...")
+            # traceback.print_stack()
+    else:
+        return {'code': -1, 'msg': 'unsupported operation', 'bot': bot_n}
     return {'code': 0, 'msg': 'success', 'bot': bot_n}
 
 

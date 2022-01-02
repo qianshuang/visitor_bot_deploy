@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import time
-
 import marisa_trie
 import schedule
 import os
@@ -84,7 +83,22 @@ def run_resources():
     open_file(CORRECTION_FILE, mode='w').write(json.dumps(corrections, ensure_ascii=False))
 
 
+# 每30天reset排序因子
+def run_resort():
+    for bot_n in os.listdir(BOT_SRC_DIR):
+        bot_recents[bot_n] = []
+        bot_frequency[bot_n] = {}
+
+        recent_file_path = os.path.join(BOT_SRC_DIR, bot_n, "recent.txt")
+        freq_file_path = os.path.join(BOT_SRC_DIR, bot_n, "frequency.json")
+        if os.path.exists(recent_file_path):
+            os.remove(recent_file_path)
+        if os.path.exists(freq_file_path):
+            os.remove(freq_file_path)
+
+
 schedule.every().day.do(run_resources)
+schedule.every(30).days.do(run_resort)
 
 
 # 多线程调度
