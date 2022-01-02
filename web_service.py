@@ -6,8 +6,6 @@ from gevent import pywsgi
 
 from helper import *
 
-# import atexit
-
 app = Flask(__name__)
 
 
@@ -16,7 +14,8 @@ def trie_search():
     """
     input json:
     {
-        "data": "xxxxxx",  # 用户query
+        "bot_name": "xxxxxx",  # 要查询的bot name
+        "query": "xxxxxx",  # 用户query
         "size": 10         # 最大返回大小
     }
 
@@ -27,20 +26,21 @@ def trie_search():
     }
     """
     resq_data = json.loads(request.get_data())
-    data = resq_data["data"].strip()
+    bot_n = resq_data["bot_name"].strip()
+    data = resq_data["query"].strip()
     size = int(resq_data["size"]) if "size" in resq_data else default_size
 
     # 1. 原句trie
-    trie_res = smart_hint(data)
+    trie_res = smart_hint(bot_n, data)
     # 2. 标点最后1句trie
     if len(trie_res) == 0:
-        trie_res = smart_hint(re.split(r'[,|.]', data)[-1].strip())
+        trie_res = smart_hint(bot_n, re.split(r'[,|.]', data)[-1].strip())
     # 3. 编辑距离
     if len(trie_res) == 0:
-        trie_res = leven(data)
+        trie_res = leven(bot_n, data)
 
-    priorities_res = priorities
-    ranked_trie_res = rank(list(set(trie_res) - set(priorities_res)))
+    priorities_res = bot_priorities[bot_n]
+    ranked_trie_res = rank(bot_n, list(set(trie_res) - set(priorities_res)))
     result = {'code': 0, 'msg': 'success', 'data': (priorities_res + ranked_trie_res)[:size]}
     return result
 
@@ -48,26 +48,25 @@ def trie_search():
 @app.route('/callback', methods=['GET', 'POST'])
 def callback():
     """
-        {
-            "query": "xxxxxx"  # 用户query
-            "intent": "xxxxxx"  # 匹配到的标准答案
-        }
+    {
+        "bot_name": "xxxxxx",  # 要操作的bot name
+        "query": "xxxxxx"  # 用户query
+        "intent": "xxxxxx"  # 匹配到的标准答案
+    }
     """
     resq_data = json.loads(request.get_data())
-    query = resq_data["query"]
+    bot_n = resq_data["bot_name"].strip()
+    query = resq_data["query"]  # 此处不能strip()
     intent = resq_data["intent"].strip()
 
     # 回写recent文件
-    # global recents
-    if intent in recents:
-        recents.remove(intent)
-    recents.insert(0, intent)
-    # write_lines(RECENT_FILE, recents)
+    if intent in bot_recents[bot_n]:
+        bot_recents[bot_n].remove(intent)
+    bot_recents[bot_n].insert(0, intent)
 
     # 回写frequency文件
-    frequency.setdefault(intent, 0)
-    frequency[intent] = frequency[intent] + 1
-    # open_file(FREQUENCY_FILE, mode='w').write(json.dumps(frequency, ensure_ascii=False))
+    bot_frequency[bot_n].setdefault(intent, 0)
+    bot_frequency[bot_n][intent] = bot_frequency[bot_n][intent] + 1
 
     # 回写纠错表
     query = pre_process(query)
@@ -82,14 +81,33 @@ def callback():
     return jsonify(result)
 
 
-# def exit_handler():
-#     print('Flask is exiting, starting writing resource files...')
-#     write_lines(RECENT_FILE, recents)
-#     open_file(FREQUENCY_FILE, mode='w').write(json.dumps(frequency, ensure_ascii=False))
-#     open_file(CORRECTION_FILE, mode='w').write(json.dumps(corrections, ensure_ascii=False))
-#
-#
-# atexit.register(exit_handler)
+@app.route('/refresh', methods=['GET', 'POST'])
+def refresh():
+    """
+    更新intents.txt、priority.txt后，需要手动刷新才生效
+    {
+        "bot_name": "xxxxxx",  # 要操作的bot name
+    }
+    """
+    resq_data = json.loads(request.get_data())
+    bot_n = resq_data["bot_name"].strip()
+
+    # 刷新intents文件
+    INTENT_FILE_ = os.path.join(BOT_SRC_DIR, bot_n, "intents.txt")
+    intents_lower_dict_ = {pre_process(intent): intent for intent in read_file(INTENT_FILE_)}
+    trie_ = marisa_trie.Trie(list(intents_lower_dict_.keys()))
+
+    bot_intents_lower_dict[bot_n] = intents_lower_dict_
+    bot_trie[bot_n] = trie_
+    print(bot_n, "intents trie finished rebuilding...")
+
+    # 刷新priority文件
+    PRIORITY_FILE_ = os.path.join(BOT_SRC_DIR, bot_n, "priority.txt")
+    bot_priorities[bot_n] = read_file(PRIORITY_FILE_)
+    print(bot_n, "priority file finished reloading...")
+
+    return {'code': 0, 'msg': 'success', 'bot': bot_n}
+
 
 if __name__ == '__main__':
     server = pywsgi.WSGIServer(('0.0.0.0', 8088), app)

@@ -9,7 +9,7 @@ def open_file(filename, mode='r'):
 
 
 def read_file(filename):
-    return [line.strip() for line in open(filename).readlines()]
+    return [line.strip() for line in open(filename).readlines() if line.strip() != ""]
 
 
 def write_file(filename, content):
