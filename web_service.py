@@ -11,8 +11,8 @@ from helper import *
 app = Flask(__name__)
 
 
-@app.route('/trie_search', methods=['GET', 'POST'])
-def trie_search():
+@app.route('/search', methods=['GET', 'POST'])
+def search():
     """
     input json:
     {
@@ -40,6 +40,8 @@ def trie_search():
     # 3. 编辑距离
     if len(trie_res) == 0:
         trie_res = leven(bot_n, data)
+    # 4. 全文检索
+
 
     priorities_res = bot_priorities[bot_n]
     ranked_trie_res = rank(bot_n, list(set(trie_res) - set(priorities_res)))
