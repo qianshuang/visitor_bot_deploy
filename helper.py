@@ -52,6 +52,7 @@ def rank(bot_n, trie_res):
 
 
 def leven(bot_n, query):
+    query = pre_process(query)
     res = []
     for k, v in bot_intents_lower_dict[bot_n].items():
         score = Levenshtein.ratio(k[:len(query)], query)
@@ -59,6 +60,18 @@ def leven(bot_n, query):
             # res.append((score, v))
             res.append(v)
     # return sorted(res, reverse=True)
+    return res
+
+
+def whoosh_search(bot_n, query):
+    query = pre_process(query)
+    query = " ".join([w + "~" for w in query.split(" ")])
+    query = bot_qp[bot_n].parse(query)
+    results = bot_searcher[bot_n].search(query)
+
+    res = []
+    for r in results:
+        res.extend(r.values())
     return res
 
 

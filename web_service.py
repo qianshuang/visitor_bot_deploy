@@ -18,7 +18,7 @@ def search():
     {
         "bot_name": "xxxxxx",  # 要查询的bot name
         "query": "xxxxxx",  # 用户query
-        "size": 10         # 最大返回大小
+        "size": 10         # 最大返回大小，默认10
     }
 
     return:
@@ -37,15 +37,19 @@ def search():
     # 2. 标点最后1句trie
     if len(trie_res) == 0:
         trie_res = smart_hint(bot_n, re.split(r'[,|.]', data)[-1].strip())
-    # 3. 编辑距离
+    # 3. 编辑距离（若有性能问题，使用whoosh的FuzzyTermPlugin：tommy~2/3）
     if len(trie_res) == 0:
         trie_res = leven(bot_n, data)
-    # 4. 全文检索
-
 
     priorities_res = bot_priorities[bot_n]
     ranked_trie_res = rank(bot_n, list(set(trie_res) - set(priorities_res)))
-    result = {'code': 0, 'msg': 'success', 'data': (priorities_res + ranked_trie_res)[:size]}
+    # 4. 全文检索
+    if len(priorities_res + ranked_trie_res) >= size:
+        whoosh_res = []
+    else:
+        whoosh_res = whoosh_search(bot_n, data)
+
+    result = {'code': 0, 'msg': 'success', 'data': (priorities_res + ranked_trie_res + whoosh_res)[:size]}
     return result
 
 
@@ -108,6 +112,26 @@ def refresh():
         bot_trie[bot_n] = trie_
         print(bot_n, "intents trie finished rebuilding...")
 
+        # 重建whoosh索引
+        index_dir_ = os.path.join(BOT_SRC_DIR, bot_n, "index")
+        if not os.path.exists(index_dir_):
+            os.mkdir(index_dir_)
+
+        schema_ = Schema(content=TEXT(stored=True))
+        ix_ = create_in(index_dir_, schema_)
+        writer_ = ix_.writer()
+        for line_ in read_file(INTENT_FILE_):
+            writer_.add_document(content=line_)
+        writer_.commit()
+        searcher_ = ix_.searcher()
+
+        qp_ = QueryParser("content", ix_.schema, group=OrGroup)
+        qp_.add_plugin(qparser.FuzzyTermPlugin())
+
+        bot_searcher[bot_n] = searcher_
+        bot_qp[bot_n] = qp_
+        print(bot_n, "whoosh index finished rebuilding...")
+
         # 刷新priority文件
         PRIORITY_FILE_ = os.path.join(BOT_SRC_DIR, bot_n, "priority.txt")
         bot_priorities[bot_n] = read_file(PRIORITY_FILE_)
@@ -121,6 +145,9 @@ def refresh():
             del bot_recents[bot_n]
             del bot_frequency[bot_n]
             del bot_priorities[bot_n]
+
+            del bot_searcher[bot_n]
+            del bot_qp[bot_n]
         except:
             print(bot_n, "deleted already...")
             # traceback.print_stack()

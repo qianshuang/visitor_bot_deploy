@@ -8,6 +8,12 @@ import json
 from collections import Counter
 import threading
 
+from whoosh import index
+from whoosh.index import create_in
+from whoosh.fields import *
+from whoosh.qparser import QueryParser, OrGroup
+from whoosh import qparser
+
 from common import *
 
 BOT_SRC_DIR = "bot_resources"
@@ -20,40 +26,65 @@ bot_priorities = {}
 bot_recents = {}
 bot_frequency = {}
 
-for bot_name in os.listdir(BOT_SRC_DIR):
+bot_searcher = {}
+bot_qp = {}
+
+for bot_n in os.listdir(BOT_SRC_DIR):
     # 加载intents文件
-    INTENT_FILE = os.path.join(BOT_SRC_DIR, bot_name, "intents.txt")
+    INTENT_FILE = os.path.join(BOT_SRC_DIR, bot_n, "intents.txt")
     intents_lower_dict = {pre_process(intent): intent for intent in read_file(INTENT_FILE)}
     trie = marisa_trie.Trie(list(intents_lower_dict.keys()))
 
-    bot_intents_lower_dict[bot_name] = intents_lower_dict
-    bot_trie[bot_name] = trie
-    print(bot_name, "intents trie finished building...")
+    bot_intents_lower_dict[bot_n] = intents_lower_dict
+    bot_trie[bot_n] = trie
+    print(bot_n, "intents trie finished building...")
+
+    # 加载whoosh索引文件
+    index_dir = os.path.join(BOT_SRC_DIR, bot_n, "index")
+    if not os.path.exists(index_dir):
+        os.mkdir(index_dir)
+
+        schema = Schema(content=TEXT(stored=True))
+        ix = create_in(index_dir, schema)
+        writer = ix.writer()
+        for line in read_file(INTENT_FILE):
+            writer.add_document(content=line)
+        writer.commit()
+    else:
+        ix = index.open_dir(index_dir)
+    searcher = ix.searcher()
+
+    qp = QueryParser("content", ix.schema, group=OrGroup)
+    qp.add_plugin(qparser.FuzzyTermPlugin())
+
+    bot_searcher[bot_n] = searcher
+    bot_qp[bot_n] = qp
+    print(bot_n, "whoosh index finished building...")
 
     # 加载priority文件，越top优先级越高
-    PRIORITY_FILE = os.path.join(BOT_SRC_DIR, bot_name, "priority.txt")
+    PRIORITY_FILE = os.path.join(BOT_SRC_DIR, bot_n, "priority.txt")
     priorities = read_file(PRIORITY_FILE)
-    bot_priorities[bot_name] = priorities
-    print(bot_name, "priority file finished loading...")
+    bot_priorities[bot_n] = priorities
+    print(bot_n, "priority file finished loading...")
 
     # 读取recent文件，越top优先级越高
-    RECENT_FILE = os.path.join(BOT_SRC_DIR, bot_name, "recent.txt")
+    RECENT_FILE = os.path.join(BOT_SRC_DIR, bot_n, "recent.txt")
     if not os.path.exists(RECENT_FILE):
         recents = []
     else:
         recents = read_file(RECENT_FILE)
-    bot_recents[bot_name] = recents
-    print(bot_name, "recent file finished loading...")
+    bot_recents[bot_n] = recents
+    print(bot_n, "recent file finished loading...")
 
     # 读取frequency文件
-    FREQUENCY_FILE = os.path.join(BOT_SRC_DIR, bot_name, "frequency.json")
+    FREQUENCY_FILE = os.path.join(BOT_SRC_DIR, bot_n, "frequency.json")
     if not os.path.exists(FREQUENCY_FILE):
         frequency = {}
     else:
         with open(FREQUENCY_FILE, encoding="utf-8") as f:
             frequency = json.load(f)
-    bot_frequency[bot_name] = frequency
-    print(bot_name, "frequency file finished loading...")
+    bot_frequency[bot_n] = frequency
+    print(bot_n, "frequency file finished loading...")
 
 # 读取纠错表文件
 CORRECTION_FILE = "resources/correction.json"
