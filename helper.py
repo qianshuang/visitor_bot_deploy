@@ -65,7 +65,11 @@ def leven(bot_n, query):
 
 def whoosh_search(bot_n, query):
     query = pre_process(query)
-    query = " ".join([w + "~" for w in query.split(" ")])
+    pres = query.split(" ")[:-1]
+    last = query.split(" ")[-1]
+    pres_fuzzy = " ".join([w + "~2" for w in pres])
+    last_fuzzy = last + "~2/" + str(len(last))
+    query = (pres_fuzzy + " " + last_fuzzy).strip()
     query = bot_qp[bot_n].parse(query)
     results = bot_searcher[bot_n].search(query)
 
