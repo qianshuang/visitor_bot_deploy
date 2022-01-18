@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import re
 import shutil
 
 from flask import Flask, jsonify
@@ -35,7 +35,7 @@ def search():
     # 1. 原句trie
     trie_res = smart_hint(bot_n, data)
     # 2. 标点最后1句trie
-    if len(trie_res) == 0:
+    if len(trie_res) == 0 and bool(re.search(r'[,|.]', data)):
         trie_res = smart_hint(bot_n, re.split(r'[,|.]', data)[-1].strip())
     # 3. 编辑距离（若有性能问题，使用whoosh的FuzzyTermPlugin：tommy~2/3）
     if len(trie_res) == 0:
